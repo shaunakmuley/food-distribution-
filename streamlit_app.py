@@ -2,9 +2,7 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import pickle
-import os
-if os.path.exists('food_data.db'):
-    os.remove('food_data.db')
+
 
 # --- 1. DATABASE SETUP ---
 def init_db():
