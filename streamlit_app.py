@@ -92,38 +92,60 @@ elif menu == "🚚 NGO Dashboard":
     st.title("🚚 NGO Dashboard")
     st.write("View available food items. Contact info is revealed only after claiming.")
     
+    # --- STEP 1: INITIALIZE MEMORY (Session State) ---
+    if 'claimed_details' not in st.session_state:
+        st.session_state.claimed_details = None
+
     conn = sqlite3.connect('food_data.db')
-    # We only show items that are NOT claimed yet
+    
+    # --- STEP 2: DISPLAY REVEALED INFO (If it exists in memory) ---
+    if st.session_state.claimed_details:
+        details = st.session_state.claimed_details
+        st.balloons()
+        st.success("✅ ITEM CLAIMED SUCCESSFULLY!")
+        with st.expander("📍 CONFIRMED DONOR CONTACT & ADDRESS", expanded=True):
+            st.markdown(f"**Donor Name:** {details['donor']}")
+            st.markdown(f"**Contact Number:** `{details['contact']}`")
+            st.markdown(f"**Pickup Address:** {details['address']}")
+            st.info(f"Please reach the location for '{details['food']}' immediately.")
+        
+        if st.button("Clear Details & View Other Listings"):
+            st.session_state.claimed_details = None
+            st.rerun()
+
+    # --- STEP 3: SHOW AVAILABLE TABLE ---
+    st.divider()
     df = pd.read_sql_query("SELECT id, donor, food, qty, hours, status FROM items WHERE status NOT LIKE 'CLAIMED%'", conn)
     
     if not df.empty:
+        st.write("### Live Food Listings")
         st.dataframe(df.drop(columns=['id']), use_container_width=True)
         
-        st.divider()
         st.subheader("Action: Claim a Pickup")
-        
-        # Select item to claim
         options = {f"{row['food']} from {row['donor']}": row['id'] for _, row in df.iterrows()}
         selected_label = st.selectbox("Which item do you want to pick up?", list(options.keys()))
         selected_id = options[selected_label]
         
         if st.button("Claim Food & View Details ✅"):
-            # Fetch full details including private info
+            # Fetch details
             c = conn.cursor()
             c.execute("SELECT donor, contact, address, food FROM items WHERE id = ?", (selected_id,))
-            details = c.fetchone()
+            res = c.fetchone()
             
-            # Show Private Details
-            st.warning("### 📍 DONOR CONTACT & ADDRESS REVEALED")
-            st.markdown(f"**Donor:** {details[0]}")
-            st.markdown(f"**Contact:** `{details[1]}`")
-            st.markdown(f"**Address:** {details[2]}")
-            st.info(f"Please reach the location for '{details[3]}' immediately.")
+            # SAVE TO MEMORY before the page reruns
+            st.session_state.claimed_details = {
+                "donor": res[0],
+                "contact": res[1],
+                "address": res[2],
+                "food": res[3]
+            }
             
-            # Mark as Claimed in DB
+            # MARK AS CLAIMED IN DB
             c.execute("UPDATE items SET status = 'CLAIMED' WHERE id = ?", (selected_id,))
             conn.commit()
-            st.rerun() # Refresh to update the table
+            st.rerun() # This will now trigger STEP 2 and show the details permanently!
     else:
-        st.info("No active donations. All meals have been claimed! 🎉")
+        if not st.session_state.claimed_details:
+            st.info("No active donations. All meals have been claimed! 🎉")
+    
     conn.close()
